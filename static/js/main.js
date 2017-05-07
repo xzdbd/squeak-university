@@ -22,12 +22,15 @@ require([
   "esri/layers/FeatureLayer",
   "esri/layers/MapImageLayer",
   "esri/symbols/PictureMarkerSymbol",
+  "esri/symbols/SimpleLineSymbol",
+  "esri/symbols/SimpleFillSymbol",
   "esri/tasks/QueryTask",
   "esri/tasks/support/Query",
   "esri/layers/GraphicsLayer",
   "esri/tasks/Geoprocessor",
   "esri/tasks/support/FeatureSet",
   "esri/layers/support/Field",
+  "esri/PopupTemplate",
 
   "dojo/query",
   "dojo/dom-class",
@@ -41,6 +44,7 @@ require([
   "dojo/dom-style",
   "dojo/_base/fx",
   "dojo/keys",
+  "dojo/html",
 
   //cedar chart
   "cedar",
@@ -59,7 +63,7 @@ require([
   // Dojo
   "dojo/domReady!"
 ], function (Map, Basemap, VectorTileLayer, MapView, SceneView, Search, Popup, Home, Legend, ColorPicker,
-  watchUtils, FeatureLayer, MapImageLayer, PictureMarkerSymbol, QueryTask, Query, GraphicsLayer, Geoprocessor, FeatureSet, Field, query, domClass, dom, on, domConstruct, date, locale, request, declare, domStyle, fx, keys, Cedar, CalciteMapsSettings) {
+  watchUtils, FeatureLayer, MapImageLayer, PictureMarkerSymbol, SimpleLineSymbol, SimpleFillSymbol, QueryTask, Query, GraphicsLayer, Geoprocessor, FeatureSet, Field, PopupTemplate, query, domClass, dom, on, domConstruct, date, locale, request, declare, domStyle, fx, keys, html, Cedar, CalciteMapsSettings) {
 
     app = {
       scale: 18056,
@@ -515,9 +519,10 @@ require([
         hideQueryLayer(0);
       });
 
-      query("#adminBuildingSearchDiv_input").on("keydown", function(event) {
+      query("#adminBuildingSearchDiv_input").on("keydown", function (event) {
         if (event.keyCode == keys.ENTER) {
           console.log(event.target.value);
+          queryUnivercityLayer(event.target.value, 0);
         }
       });
     }
@@ -533,6 +538,94 @@ require([
     function hideQueryLayer(layerId) {
       var layer = app.mapView.map.findLayerById(layerId)
       app.mapView.map.layers.remove(layer);
+    }
+
+    function queryUnivercityLayer(name, layerId) {
+      var universityGraphicsLayer = new GraphicsLayer({
+        id: "graphicsLayer" + layerId
+      });
+      var highlightGraphicsLayer = new GraphicsLayer({
+        id: "highlightGraphicsLayer" + layerId
+      });
+      var htmlTemplate = "";
+      var universityLayer = "https://gis.xzdbd.com/arcgis/rest/services/dev/university/MapServer/" + layerId;
+      var queryTask = new QueryTask({
+        url: universityLayer
+      });
+      var query1 = new Query();
+      query1.returnGeometry = true;
+      query1.outFields = ["名称", "编号"];
+      query1.where = "名称 like '%" + name + "%'";
+
+      queryTask.execute(query1).then(function (result) {
+        htmlTemplate = initGrid(result.features);
+        result.features.forEach(function (graphic) {
+          if (graphic.geometry.type == "polygon") {
+            graphic.symbol = new SimpleFillSymbol({
+              color: [0, 255, 0, 1],
+              outline: {
+                color: [128, 128, 128],
+                width: 1
+              }
+            });
+          } else if (graphic.geometry.type == "polyline") {
+            graphic.symbol = new SimpleLineSymbol({
+              width: 1,
+              color: [64, 255, 0]
+            });
+          }
+
+          graphic.popupTemplate = new PopupTemplate({
+            title: "{名称}",
+            content: "<p>ID: {编号}</p><p>名称： {名称}</p>"
+          });
+
+          universityGraphicsLayer.add(graphic);
+        });
+        app.mapView.map.layers.add(universityGraphicsLayer);
+        html.set(query("#adminBuilding-info-table")[0], htmlTemplate);
+        query("#adminBuilding-info-table tr").on("click", function (e) {
+          highlightSelectedGraphic(e)
+        });
+
+        function highlightSelectedGraphic(e) {
+          highlightGraphicsLayer.removeAll();
+          app.mapView.map.layers.remove(highlightGraphicsLayer);
+          id = e.target.parentElement.firstElementChild.innerHTML;
+          universityGraphicsLayer.graphics.forEach(function (graphic) {
+            if (graphic.attributes.编号 == id) {
+              graphic.symbol = new SimpleFillSymbol({
+                color: [0, 255, 0, 1],
+                outline: {
+                  color: [255, 51, 153],
+                  width: 3
+                }
+              });
+              highlightGraphicsLayer.add(graphic);
+              app.mapView.map.layers.add(highlightGraphicsLayer);
+              app.mapView.extent = graphic.geometry.extent;
+              app.mapView.scale = app.mapView.scale * 10;
+            }
+          });
+        }
+
+      });
+    }
+
+    function initGrid(features) {
+      gridHtml = '<tbody>';
+      gridHtml += '<tr>' +
+        '<th>编号</th>' +
+        '<th>名称</th>' +
+        '</tr>';
+      features.forEach(function (feature) {
+        gridHtml += '<tr class="success">' +
+          '<td>' + feature.attributes.编号 + '</td>' +
+          '<td>' + feature.attributes.名称 + '</td>' +
+          '</tr>';
+      });
+      gridHtml += '</tbody>';
+      return gridHtml;
     }
 
     //----------------------------------
